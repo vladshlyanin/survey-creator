@@ -7,6 +7,7 @@
 
 .svd-vertical-container__row {
     width: 100%;
+    height: 100%;
     display: table-row;
     &:first-child {
         height: 0;
@@ -38,7 +39,7 @@
 }
 
 .svd_editors {
-    .svd-vertical-container {
+    &>.svd-vertical-container {
         table-layout: fixed;
     }
 }

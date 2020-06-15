@@ -23,14 +23,6 @@ svd-designer-container {
     display: block;
     float: right;
   }
-
-  // TODO: remove
-  .svd_properties {
-    margin-right: 1em;
-    .svd_object_selector {
-      padding-right: 0;
-    }
-  }
 }
 
 .svd-designer-container--right-side {
@@ -77,6 +69,8 @@ svd-designer-container {
 .svd-designer-tabbed-container__tab-content {
   display: none;
   height: 100%;
+  overflow: auto;
+
   &.svd-designer-tabbed-container__tab-content-active {
     display: block;
   }

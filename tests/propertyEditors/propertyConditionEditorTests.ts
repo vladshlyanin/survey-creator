@@ -6,7 +6,7 @@ import {
 } from "../../src/propertyEditors/propertyConditionEditor";
 import { SurveyPropertyEditorFactory } from "../../src/propertyEditors/propertyEditorFactory";
 import { SurveyPropertyDropdownColumnsEditor } from "../../src/propertyEditors/propertyMatrixDropdownColumnsEditor";
-import { SurveyElementEditorContent } from "../../src/questionEditors/questionEditor";
+import { SurveyElementEditorContentModel } from "../../src/questionEditors/questionEditor";
 
 export default QUnit.module("SurveyPropertyConditionEditor");
 
@@ -249,7 +249,10 @@ QUnit.test(
   "Apostrophes in answers break VisibleIf - https://github.com/surveyjs/editor/issues/476",
   function(assert) {
     var survey = new Survey.SurveyModel({
-      questions: [{ type: "text", name: "q1" }, { type: "text", name: "q2" }],
+      questions: [
+        { type: "text", name: "q1" },
+        { type: "text", name: "q2" },
+      ],
     });
     var question = survey.getQuestionByName("q1");
     var property = Survey.Serializer.findProperty("question", "visibleIf");
@@ -472,7 +475,10 @@ QUnit.test("SurveyPropertyConditionEditor.allConditionQuestions", function(
   }
   assert.deepEqual(
     res,
-    [{ name: "q2", text: "q2" }, { name: "q3", text: "q3" }],
+    [
+      { name: "q2", text: "q2" },
+      { name: "q3", text: "q3" },
+    ],
     "returns questions correctly"
   );
 });
@@ -629,7 +635,7 @@ QUnit.test(
     columnsEditor.beforeShow();
     var itemViewModel = columnsEditor.createItemViewModel(question.columns[0]);
     columnsEditor.onEditItemClick(itemViewModel);
-    var colDetailEditor = <SurveyElementEditorContent>(
+    var colDetailEditor = <SurveyElementEditorContentModel>(
       columnsEditor.koEditItem().itemEditor
     );
     var visEditor = <SurveyPropertyConditionEditor>(
@@ -824,7 +830,10 @@ QUnit.test(
 
 QUnit.test("SurveyPropertyConditionEditor, clearCondition", function(assert) {
   var survey = new Survey.Survey({
-    elements: [{ name: "q1", type: "text" }, { name: "q2", type: "text" }],
+    elements: [
+      { name: "q1", type: "text" },
+      { name: "q2", type: "text" },
+    ],
   });
   var question = survey.getQuestionByName("q2");
   var property = Survey.Serializer.findProperty("question", "visibleIf");
@@ -1715,6 +1724,78 @@ QUnit.test(
       editorItem.valueQuestion.value,
       ["item1", "item3"],
       "set valueQuestion value correctly to array"
+    );
+  }
+);
+
+QUnit.test(
+  "SurveyPropertyConditionEditor, anyof/allof is enabled on editing, Bug #804",
+  function(assert) {
+    var survey = new Survey.Survey({
+      elements: [
+        { name: "q1", type: "text" },
+        {
+          name: "q2",
+          type: "checkbox",
+          choices: ["item1", "item2", "item3"],
+          visibleIf: "{q1} = 'a'",
+        },
+      ],
+    });
+    var question = survey.getQuestionByName("q2");
+    var property = Survey.Serializer.findProperty("question", "visibleIf");
+    var editor = new SurveyPropertyConditionEditor(property);
+    editor.object = question;
+    editor.beforeShow();
+    editor.isEditorShowing = true;
+    var editorItem = editor.koEditorItems()[0];
+    var itemValue = Survey.ItemValue.getItemByValue(
+      editorItem.operatorQuestion.choices,
+      "anyof"
+    );
+    assert.ok(itemValue, "anyof is here");
+    assert.equal(itemValue.isEnabled, false, "anyof is disabled");
+  }
+);
+QUnit.test(
+  "SurveyPropertyConditionEditor, file question type should not set operator to 'equal', Bug #",
+  function(assert) {
+    var survey = new Survey.Survey({
+      elements: [
+        { name: "q1", type: "text" },
+        {
+          name: "q2",
+          type: "file",
+        },
+        { name: "q3", type: "text" },
+      ],
+    });
+    var question = survey.getQuestionByName("q1");
+    var property = Survey.Serializer.findProperty("question", "visibleIf");
+    var editor = new SurveyPropertyConditionEditor(property);
+    editor.object = question;
+    editor.beforeShow();
+    editor.isEditorShowing = true;
+    var editorItem = editor.koEditorItems()[0];
+    editorItem.questionName = "q2";
+    assert.equal(
+      editorItem.operator,
+      "empty",
+      "Operator can't be equal for file type"
+    );
+    assert.notOk(
+      editorItem.valueQuestion,
+      "We do not need to show question value for file type"
+    );
+    editorItem.questionName = "q3";
+    assert.equal(
+      editorItem.operator,
+      "equal",
+      "Operator must be equal for text type"
+    );
+    assert.ok(
+      editorItem.valueQuestion,
+      "We must show question value for text type"
     );
   }
 );

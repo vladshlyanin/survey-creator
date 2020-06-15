@@ -10,7 +10,7 @@
     vertical-align: middle;
   }
 
-  pages-editor {
+  svd-pages-editor {
     display: block;
     width: 100%;
     white-space: nowrap;
@@ -20,6 +20,7 @@
     -moz-user-select: none;
     -ms-user-select: none;
     user-select: none;
+    overflow: hidden;
 
     .svd-pages {
       white-space: nowrap;
@@ -110,20 +111,21 @@
       }
     }
 
-    .svd-page-selector.svd_custom_select {
+    .svd-page-selector {
       max-width: 250px;
       line-height: 2.44em;
       height: 2.44em;
       border-width: 0;
-      border-bottom-width: 1px;
-      border-style: solid;
       font-size: 14px;
       margin-bottom: 7px;
-      select {
-        padding-left: 20px;
-        min-width: 100px;
-        border: none;
-      }
     }
+    
   }
+}
+
+#svd-toolbar-page-selector .svd-toolbar-dropdown {
+  // position: absolute;
+  // left: 0;
+  // top: 5px;
+  margin-top: -6px;
 }

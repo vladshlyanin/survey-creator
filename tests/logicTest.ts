@@ -4,10 +4,10 @@ import {
   SurveyLogicAction,
   ISurveyLogicType,
   SurveyLogicType,
-} from "../src/logic";
+} from "../src/tabs/logic";
 import { EditorOptionsTests } from "./editorOptionsTests";
 import { SurveyCreator } from "../src/editor";
-import { SurveyElementEditorContent } from "../src/questionEditors/questionEditor";
+import { SurveyElementEditorContentModel } from "../src/questionEditors/questionEditor";
 
 export default QUnit.module("LogicTabTests");
 
@@ -71,7 +71,10 @@ QUnit.test("Add existing visible Items", function(assert) {
 });
 QUnit.test("Add new action immediately", function(assert) {
   var survey = new Survey.SurveyModel({
-    elements: [{ type: "text", name: "q1" }, { type: "text", name: "q2" }],
+    elements: [
+      { type: "text", name: "q1" },
+      { type: "text", name: "q2" },
+    ],
   });
   var logic = new SurveyLogic(survey);
   assert.equal(logic.mode, "view", "Default is mode is view");
@@ -679,7 +682,7 @@ QUnit.test("Edit triggers via trigger editor", function(assert) {
   var action = logic.editableItem.actions[0];
   assert.ok(action.templateObject, "Template object is created");
   logic.expressionEditor.koValue("{q1} = 10");
-  var triggerEditor = <SurveyElementEditorContent>action.templateObject;
+  var triggerEditor = <SurveyElementEditorContentModel>action.templateObject;
   assert.equal(
     triggerEditor.getPropertyEditorByName("expression").koVisible(),
     false,
@@ -779,7 +782,10 @@ QUnit.test("Disable editing for readOnly", function(assert) {
   var options = new EditorOptionsTests();
   options.readOnly = true;
   var survey = new Survey.SurveyModel({
-    elements: [{ type: "text", name: "q1" }, { type: "text", name: "q2" }],
+    elements: [
+      { type: "text", name: "q1" },
+      { type: "text", name: "q2" },
+    ],
   });
   var logic = new SurveyLogic(survey, options);
   assert.equal(logic.mode, "view", "Can't insert, it is readOnly");
@@ -916,7 +922,10 @@ QUnit.test("Displaying correct text for logic action", function(assert) {
 
 QUnit.test("Logic editing errors", function(assert) {
   var survey = new Survey.SurveyModel({
-    elements: [{ type: "text", name: "q1" }, { type: "text", name: "q2" }],
+    elements: [
+      { type: "text", name: "q1" },
+      { type: "text", name: "q2" },
+    ],
   });
   var logic = new SurveyLogic(survey);
   logic.addNew();
@@ -948,7 +957,7 @@ QUnit.test("Logic editing errors", function(assert) {
   action.logicType = logic.getTypeByName("trigger_setvalue");
   assert.equal(logic.editableItem.actions.length, 2, "There two actions");
   assert.equal(action.hasError(), true, "setToName is empty");
-  var triggerEditor = <SurveyElementEditorContent>action.templateObject;
+  var triggerEditor = <SurveyElementEditorContentModel>action.templateObject;
   triggerEditor.getPropertyEditorByName("setToName").editor.koValue("q2");
   triggerEditor.getPropertyEditorByName("setValue").editor.koValue("newValue");
   assert.equal(action.hasError(), false, "setToName  is correct");
@@ -983,7 +992,7 @@ QUnit.test("Return without saving", function(assert) {
   var item = logic.items[0];
   item.edit();
   logic.expressionEditor.koTextValue("{q1} = 2");
-  var triggerEditor = <SurveyElementEditorContent>(
+  var triggerEditor = <SurveyElementEditorContentModel>(
     item.actions[1].templateObject
   );
   triggerEditor.getPropertyEditorByName("gotoName").editor.koValue("q3");
@@ -1023,12 +1032,12 @@ QUnit.test("Make Survey Creator modified on changes", function(assert) {
       },
     ],
   };
+  var logic = new SurveyLogic(creator.survey, creator);
   creator.showLogicEditor();
   var modifiedCounter = 0;
   creator.onModified.add(function() {
     modifiedCounter++;
   });
-  var logic = creator.logic;
   var item = logic.items[0];
   item.edit();
   logic.expressionEditor.koTextValue("{q1} = 2");
@@ -1065,8 +1074,7 @@ QUnit.test(
         },
       ],
     };
-    creator.showLogicEditor();
-    var logic = creator.logic;
+    var logic = new SurveyLogic(creator.survey, creator);
     var item = logic.items[0];
     item.edit();
     assert.equal(
@@ -1177,7 +1185,10 @@ QUnit.test("Limit the number of action types.", function(assert) {
 
 QUnit.test("Logic onLogicItemSaved event", function(assert) {
   var survey = new Survey.SurveyModel({
-    elements: [{ type: "text", name: "q1" }, { type: "text", name: "q2" }],
+    elements: [
+      { type: "text", name: "q1" },
+      { type: "text", name: "q2" },
+    ],
   });
   var logic = new SurveyLogic(survey);
   var callCount = 0;
@@ -1227,7 +1238,7 @@ QUnit.test("Logic onLogicItemRemoving/onLogicItemRemoved events", function(
   assert.equal(removedCallCount, 1, "Event has been called");
 });
 
-QUnit.test("SurveyCreator with logictab only, set cretor json", function(
+QUnit.test("SurveyCreator with logictab only, set creator json", function(
   assert
 ) {
   var options = {
@@ -1244,7 +1255,8 @@ QUnit.test("SurveyCreator with logictab only, set cretor json", function(
       { type: "text", name: "q3" },
     ],
   };
-  assert.equal(creator.logic.items.length, 1, "We have one item here");
+  var logic = new SurveyLogic(creator.survey, creator);
+  assert.equal(logic.items.length, 1, "We have one item here");
 });
 QUnit.test("Hide/show logic types in actions", function(assert) {
   var findLogicTypeInAction = function(

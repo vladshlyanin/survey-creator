@@ -1,0 +1,25 @@
+<div class="svd_properties svd-light-border-color svd-dark-bg-color">
+  <div class="svd-vertical-container">
+    <div class="svd-vertical-container__row">
+      <div class="svd-vertical-container__cell">
+        <svd-dropdown
+          class="svd_object_selector svd-light-border-color"
+          params="item: { items: koObjects, action: koSelectedObject, title: '', optionsValue: null }"
+        ></svd-dropdown>
+      </div>
+    </div>
+    <div class="svd-vertical-container__row">
+      <div class="svd-vertical-container__cell">
+        <div class="svd-vertical-container__cell-content-holder">
+          <div
+            class="svd-vertical-container__cell-content svd-vertical-container__cell-content--scrollable"
+          >
+            <svd-object-editor
+              params="model: propertyGridObjectEditorModel"
+            ></svd-object-editor>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

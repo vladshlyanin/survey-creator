@@ -4,19 +4,17 @@ import {
   ISurveyObjectEditorOptions,
   SurveyPropertyEditorBase,
 } from "./propertyEditors/propertyEditorBase";
-import { SurveyEmbedingWindow } from "./surveyEmbedingWindow";
 import { SurveyObjects } from "./surveyObjects";
 import { QuestionConverter } from "./questionconverter";
 import {
-  SurveyElementPropertyGrid,
+  PropertyGridObjectEditorModel,
   SurveyPropertyEditorShowWindow,
 } from "./questionEditors/questionEditor";
-import { SurveyJSONEditor } from "./surveyJSONEditor";
 import { SurveyTextWorker } from "./textWorker";
 import { UndoRedoManager, IUndoRedoChange } from "./undoredomanager";
 import { SurveyHelper, ObjType } from "./surveyHelper";
 import { DragDropHelper } from "./dragdrophelper";
-import { QuestionToolbox } from "./questionToolbox";
+import { QuestionToolbox } from "./components/toolbox";
 import { SurveyJSON5 } from "./json5";
 var templateEditorHtml = require("html-loader?interpolate!val-loader!./templates/entry.html");
 import * as Survey from "survey-knockout";
@@ -28,11 +26,12 @@ import {
 } from "./surveyjsObjects";
 import { StylesManager } from "./stylesmanager";
 import { itemAdorner } from "./adorners/item-editor";
-import { Translation } from "./translation";
-import { SurveyLogic } from "./logic";
+import { Translation } from "./tabs/translation";
+import { SurveyLogic } from "./tabs/logic";
 import { Commands } from "./commands";
 
-import { IToolbarItem } from './components/toolbar';
+import { IToolbarItem } from "./components/toolbar";
+import { PagesEditor } from "./pages-editor";
 
 type ContainerLocation = "left" | "right" | "top" | "none" | boolean;
 
@@ -46,13 +45,10 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
   private renderedElement: HTMLElement;
   private surveyjs: HTMLElement;
 
-  private jsonEditor: SurveyJSONEditor;
-  private elementPropertyGridValue: SurveyElementPropertyGrid;
   private questionEditorWindow: SurveyPropertyEditorShowWindow;
 
   public selectPage: Function;
 
-  private surveyEmbeding: SurveyEmbedingWindow;
   private translationValue: Translation;
   private logicValue: SurveyLogic;
   private surveyObjects: SurveyObjects;
@@ -72,6 +68,7 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
   private showEmbededSurveyTabValue = ko.observable<boolean>(false);
   private showTranslationTabValue = ko.observable<boolean>(false);
   private showLogicTabValue = ko.observable<boolean>(false);
+  private hideExpressionHeaderValue = ko.observable<boolean>(false);
   private select2: any = null;
   private alwaySaveTextInPropertyEditorsValue: boolean = false;
   private showApplyButtonValue: boolean = true;
@@ -140,6 +137,11 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
   public showPagesInTestSurveyTab = true;
 
   /**
+   * Set this property to false to hide the device simulator in the Test Survey Tab
+   */
+  public showSimulatorInTestSurveyTab = true;
+
+  /**
    * Set this property to false to disable pages adding, editing and deleting
    */
   public allowModifyPages = true;
@@ -159,6 +161,11 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
   public showInvisibleElementsInTestSurveyTab = true;
 
   /**
+   * Set this property to true if you want to show "page selector" in the toolabar instead of "pages editor"
+   */
+  public showPageSelectorInToolbar = false;
+
+  /**
    * This property is assign to the survey.surveyId property on showing in the "Embed Survey" tab.
    * @see showEmbededSurveyTab
    */
@@ -172,6 +179,14 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
    * This callback is called on changing "Generate Valid JSON" option.
    */
   public generateValidJSONChangedCallback: (generateValidJSON: boolean) => void;
+  /**
+   * This callback is used internally for providing survey JSON text.
+   */
+  public getSurveyJSONTextCallback: () => { text: string; isModified: boolean };
+  /**
+   * This callback is used internally for setting survey JSON text.
+   */
+  public setSurveyJSONTextCallback: (text: string) => void;
   /**
    * The event is called in case of UI notifications. By default all notifications are done via built-in alert () function.
    * In case of any subscriptions to this event all notifications will be redirected into the event handler.
@@ -763,8 +778,13 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
 
   public commands: any;
 
+  // models from MVVM
+  public propertyGridObjectEditorModel: PropertyGridObjectEditorModel;
+  public pagesEditorModel: PagesEditor;
+  // EO models from MVVM
+
   koIsShowDesigner: any;
-  koViewType: any;
+  koViewType = ko.observable("designer");
   koCanDeleteObject: any;
   koObjects: any;
   koSelectedObject: ko.Observable<any>;
@@ -798,7 +818,7 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
    * allowModifyPages, pageEditingMode, showDropdownPageSelector, readOnly,
    * questionTypes, generateValidJSON, isAutoSave, designerHeight, showErrorOnFailedSave, closeModalOutside, useTabsInElementEditor,
    * showObjectTitles, inplaceEditForValues, showTitlesInExpressions, allowEditExpressionsInTextEditor,
-   * showPagesInTestSurveyTab, showDefaultLanguageInTestSurveyTab, showInvisibleElementsInTestSurveyTab,
+   * showPagesInTestSurveyTab, showDefaultLanguageInTestSurveyTab, showInvisibleElementsInTestSurveyTab, showSimulatorInTestSurveyTab,
    * showSurveyTitle, allowControlSurveyTitleVisibility, hideExpressionHeaderInLogicTab
    */
   constructor(renderedElement: any = null, options: any = null) {
@@ -810,6 +830,13 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
     this.koCanUndo = ko.observable(false);
     this.koCanRedo = ko.observable(false);
 
+    this.toolboxValue = new QuestionToolbox(
+      this.options && this.options.questionTypes
+        ? this.options.questionTypes
+        : null,
+      this
+    );
+    this.logicValue = new SurveyLogic(this.createSurvey({}, "logic"), this);
     var self = this;
 
     StylesManager.applyTheme(StylesManager.currentTheme());
@@ -848,13 +875,25 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
       this.selectedElement = page;
     };
 
-    this.elementPropertyGridValue = new SurveyElementPropertyGrid(this);
-    this.elementPropertyGridValue.hasCategories = this.showElementEditorAsPropertyGrid;
+    this.propertyGridObjectEditorModel = new PropertyGridObjectEditorModel(
+      this
+    );
+
+    if (this.showElementEditorAsPropertyGrid) {
+      this.propertyGridObjectEditorModel.koIsOldTableAppearance(false);
+    } else {
+      self.propertyGridObjectEditorModel.koIsOldTableAppearance(true);
+    }
+
     this.koShowElementEditorAsPropertyGrid.subscribe(function(newValue) {
-      self.elementPropertyGridValue.hasCategories = newValue;
+      if (newValue) {
+        self.propertyGridObjectEditorModel.koIsOldTableAppearance(false);
+      } else {
+        self.propertyGridObjectEditorModel.koIsOldTableAppearance(true);
+      }
     });
 
-    this.elementPropertyGridValue.onAfterRenderCallback = function(
+    this.propertyGridObjectEditorModel.onAfterRenderCallback = function(
       obj,
       htmlElement,
       prop
@@ -868,21 +907,21 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
       };
       self.onPropertyAfterRender.fire(self, options);
     };
-    this.elementPropertyGridValue.onSortPropertyCallback = function(
+    this.propertyGridObjectEditorModel.onSortPropertyCallback = function(
       obj: any,
       property1: Survey.JsonObjectProperty,
       property2: Survey.JsonObjectProperty
     ): number {
       return self.onCustomSortPropertyObjectProperty(obj, property1, property2);
     };
-    this.elementPropertyGridValue.onPropertyChanged = function(
+    this.propertyGridObjectEditorModel.onPropertyChanged = function(
       obj: any,
       prop: Survey.JsonObjectProperty,
       oldValue: any
     ) {
       self.onPropertyChanged(obj, prop, oldValue);
     };
-    this.elementPropertyGridValue["onCorrectValueBeforeSet"] = function(
+    this.propertyGridObjectEditorModel["onCorrectValueBeforeSet"] = function(
       obj: any,
       prop: Survey.JsonObjectProperty,
       newValue: any
@@ -891,40 +930,7 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
     };
 
     this.questionEditorWindow = new SurveyPropertyEditorShowWindow();
-    this.surveyEmbeding = new SurveyEmbedingWindow();
-    this.translationValue = new Translation(
-      this.createSurvey({}, "translation")
-    );
-    this.translation.importFinishedCallback = function() {
-      self.onTranslationImported.fire(self, {});
-    };
-    this.translation.availableTranlationsChangedCallback = () => {
-      this.setModified({ type: "TRANSLATIONS_CHANGED" });
-    };
-    this.translation.tranlationChangedCallback = (
-      locale: string,
-      name: string,
-      value: string,
-      context: any
-    ) => {
-      this.setModified({
-        type: "TRANSLATIONS_CHANGED",
-        locale,
-        name,
-        value,
-        context,
-      });
-    };
-    this.logicValue = new SurveyLogic(this.createSurvey({}, "logic"), this);
-    this.logic.hideExpressionHeader =
-      !!options && options.hideExpressionHeader === true;
-    this.toolboxValue = new QuestionToolbox(
-      this.options && this.options.questionTypes
-        ? this.options.questionTypes
-        : null
-    );
 
-    this.koViewType = ko.observable("designer");
     this.koViewType.subscribe(function(newValue) {
       self.onActiveTabChanged.fire(self, { tabName: newValue });
     });
@@ -971,11 +977,6 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
       }
     };
 
-    this.jsonEditor = new SurveyJSONEditor();
-    ko.computed(() => {
-      this.jsonEditor.readOnly = this.readOnly;
-    });
-
     ko.computed(() => {
       this.tabs([]);
       if (this.showDesignerTab) {
@@ -1001,7 +1002,7 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
           name: "logic",
           title: this.getLocString("ed.logic"),
           template: "se-tab-logic",
-          data: this.logic,
+          data: this,
           action: () => this.showLogicEditor(),
         });
       }
@@ -1009,8 +1010,8 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
         this.tabs.push({
           name: "editor",
           title: this.getLocString("ed.jsonEditor"),
-          template: "jsoneditor",
-          data: this.jsonEditor,
+          template: "se-tab-json-editor",
+          data: this,
           action: () => this.showJsonEditor(),
         });
       }
@@ -1018,8 +1019,8 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
         this.tabs.push({
           name: "embed",
           title: this.getLocString("ed.embedSurvey"),
-          template: "surveyembeding",
-          data: this.surveyEmbeding,
+          template: "se-tab-embed",
+          data: this,
           action: () => this.showEmbedEditor(),
         });
       }
@@ -1027,8 +1028,8 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
         this.tabs.push({
           name: "translation",
           title: this.getLocString("ed.translation"),
-          template: "translation",
-          data: this.translation,
+          template: "se-tab-translation",
+          data: this,
           action: () => this.showTranslationEditor(),
         });
       }
@@ -1039,6 +1040,8 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
 
     this.text = "";
 
+    this.pagesEditorModel = new PagesEditor(this);
+
     if (renderedElement) {
       this.render(renderedElement);
     }
@@ -1047,6 +1050,12 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
     self.commands = commands.getCommands();
     this.addToolbarItems();
   }
+
+  // get toolboxItems() {
+  //   return this.options && this.options.questionTypes
+  //     ? this.options.questionTypes
+  //     : null;
+  // }
 
   tabs = ko.observableArray();
 
@@ -1079,6 +1088,10 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
 
       this.toolbarItems.push(toolbarItem);
     });
+  }
+
+  public getOptions() {
+    return this.options || {};
   }
 
   protected setOptions(options: any) {
@@ -1117,6 +1130,7 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
     this.showLogicTabValue(
       typeof options.showLogicTab !== "undefined" ? options.showLogicTab : false
     );
+    this.hideExpressionHeaderValue(options.hideExpressionHeader === true);
     this.haveCommercialLicense =
       typeof options.haveCommercialLicense !== "undefined"
         ? options.haveCommercialLicense
@@ -1170,7 +1184,7 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
       typeof options.scrollToNewElement !== "undefined"
         ? options.scrollToNewElement
         : true;
-    if (options.designerHeight) {
+    if (options.designerHeight !== undefined) {
       this.koDesignerHeight(options.designerHeight);
     }
     if (options.objectsIntend) {
@@ -1184,6 +1198,9 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
     }
     if (typeof options.showPagesInTestSurveyTab !== "undefined") {
       this.showPagesInTestSurveyTab = options.showPagesInTestSurveyTab;
+    }
+    if (typeof options.showSimulatorInTestSurveyTab !== "undefined") {
+      this.showSimulatorInTestSurveyTab = options.showSimulatorInTestSurveyTab;
     }
     if (typeof options.showDefaultLanguageInTestSurveyTab !== "undefined") {
       this.showDefaultLanguageInTestSurveyTab =
@@ -1208,6 +1225,10 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
         this.showJSONEditorTab = false;
       }
     }
+    if (this.options.showPageSelectorInToolbar) {
+      this.showPageSelectorInToolbar = true;
+      this.showDropdownPageSelectorValue = false;
+    }
     if (typeof options.showDropdownPageSelector !== "undefined") {
       this.showDropdownPageSelectorValue = options.showDropdownPageSelector;
     }
@@ -1223,9 +1244,6 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
    */
   public get survey(): SurveyForDesigner {
     return this.surveyValue();
-  }
-  public get selectedElementPropertyGrid(): SurveyElementPropertyGrid {
-    return this.elementPropertyGridValue;
   }
   /**
    * Use this method to force update this element in editor.
@@ -1271,7 +1289,9 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
    * @see JSON
    */
   public get text(): string {
-    if (this.koViewType() == "editor") return this.jsonEditor.text;
+    if (!!this.getSurveyJSONTextCallback) {
+      return this.getSurveyJSONTextCallback().text;
+    }
     return this.getSurveyTextFromDesigner();
   }
   public set text(value: string) {
@@ -1310,9 +1330,6 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
     if (this.showDesignerTab) {
       this.showDesigner();
     }
-    if (this.koViewType() == "logic") {
-      this.logic.update(this.survey, this);
-    }
     this.setUndoRedoCurrentState(clearState);
   }
   /**
@@ -1322,12 +1339,18 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
   public get toolbox(): QuestionToolbox {
     return this.toolboxValue;
   }
+  // public set toolbox(newValue: QuestionToolbox) {
+  //   this.toolboxValue = newValue;
+  // }
   /**
    * Return the translation mode object.
    * @see showTranslationTab
    */
   public get translation(): Translation {
     return this.translationValue;
+  }
+  public set translation(newValue: Translation) {
+    this.translationValue = newValue;
   }
   /**
    * Return the logic mode object.
@@ -1336,6 +1359,9 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
   public get logic(): SurveyLogic {
     return this.logicValue;
   }
+  // public set logic(logic: SurveyLogic) {
+  //   this.logicValue = logic;
+  // }
   /**
    * The list of toolbar items. You may add/remove/replace them.
    * @see IToolbarItem
@@ -1639,6 +1665,9 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
   public set showLogicTab(value: boolean) {
     this.showLogicTabValue(value);
   }
+  public get hideExpressionHeader() {
+    return this.hideExpressionHeaderValue();
+  }
   /**
    * Set it to true to activate RTL support
    */
@@ -1730,8 +1759,9 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
   }
 
   private setTextValue(value: string) {
-    this.jsonEditor.isInitialJSON = true;
-    this.jsonEditor.text = value;
+    if (!!this.setSurveyJSONTextCallback) {
+      this.setSurveyJSONTextCallback(value);
+    }
   }
   /**
    * Add a new page into the editing survey.
@@ -1866,17 +1896,14 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
   }
   private doPropertyGridChanged() {
     if (!this.showPropertyGrid) return;
-    this.elementPropertyGridValue.objectChanged();
+    this.propertyGridObjectEditorModel.objectChanged();
   }
   private setNewObjToPropertyGrid(newObj: any) {
     if (!this.showPropertyGrid) return;
-    this.elementPropertyGridValue.selectedObject = newObj;
+    this.propertyGridObjectEditorModel.selectedObject = newObj;
   }
   private canSwitchViewType(newType: string): boolean {
     if (newType && this.koViewType() == newType) return false;
-    if (this.koViewType() == "designer") {
-      this.setTextValue(this.getSurveyTextFromDesigner());
-    }
     if (
       (this.koViewType() == "translation" || this.koViewType() == "logic") &&
       newType == "designer"
@@ -1884,15 +1911,17 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
       this.survey.render();
     }
     if (this.koViewType() != "editor") return true;
-    if (!this.jsonEditor.isJsonCorrect) {
+    var textWorker = new SurveyTextWorker(this.text);
+    if (!textWorker.isJsonCorrect) {
       this.notify(this.getLocString("ed.correctJSON"));
       return false;
     }
-    if (!this.readOnly && this.jsonEditor.isJSONChanged) {
-      this.initSurvey(
-        new Survey.JsonObject().toJsonObject(this.jsonEditor.survey)
-      );
-
+    if (
+      !this.readOnly &&
+      !!this.getSurveyJSONTextCallback &&
+      this.getSurveyJSONTextCallback().isModified
+    ) {
+      this.initSurvey(new Survey.JsonObject().toJsonObject(textWorker.survey));
       this.setModified({ type: "VIEW_TYPE_CHANGED", newType: newType });
     }
     return true;
@@ -1916,15 +1945,6 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
    */
   public makeNewViewActive(viewName: string): boolean {
     if (!this.canSwitchViewType(viewName)) return false;
-    if (viewName == "editor") {
-      this.jsonEditor.show(this.getSurveyTextFromDesigner());
-    }
-    if (viewName == "embed") {
-      this.showSurveyEmbeding();
-    }
-    if (viewName == "translation") {
-      this.showSurveyTranslation();
-    }
     this.koViewType(viewName);
     return true;
   }
@@ -1963,13 +1983,13 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
    */
   public showLogicEditor() {
     if (!this.canSwitchViewType("logic")) return;
-    this.showSurveyLogic();
     this.koViewType("logic");
   }
   private getSurveyTextFromDesigner() {
     var json = this.survey.toJSON();
-    if (this.options && this.options.generateValidJSON)
+    if (this.options && this.options.generateValidJSON) {
       return JSON.stringify(json, null, 1);
+    }
     return new SurveyJSON5().stringify(json, null, 1);
   }
   private getPageByElement(obj: Survey.Base): Survey.Page {
@@ -1993,8 +2013,8 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
   public validateSelectedElement(): boolean {
     var isValid = true;
     if (!this.selectedElement) return isValid;
-    if (!!this.elementPropertyGridValue) {
-      isValid = !this.elementPropertyGridValue.hasErrors();
+    if (!!this.propertyGridObjectEditorModel) {
+      isValid = !this.propertyGridObjectEditorModel.hasErrors();
     }
     var options = { errors: [] };
     this.onValidateSelectedElement.fire(this, options);
@@ -2076,9 +2096,6 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
 
     this.setUndoRedoCurrentState(true);
 
-    this.jsonEditor.init(<HTMLElement>(
-      this.renderedElement.querySelector("#surveyjsJSONEditor")
-    ));
     if (typeof jQuery !== "undefined" && jQuery()["select2"]) {
       var options: any = {
         width: "100%",
@@ -2725,7 +2742,7 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
       this.setNewObjToPropertyGrid(element);
       this.leftContainerActiveItem("property-grid");
       this.rightContainerActiveItem("property-grid");
-      this.elementPropertyGridValue.focusEditor();
+      this.propertyGridObjectEditorModel.focusEditor();
       return;
     }
     var self = this;
@@ -2839,9 +2856,7 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
     if (objType == ObjType.Page) {
       this.survey.removePage(obj);
     } else {
-      this.survey.currentPage.removeElement(obj);
-      this.survey.selectedElement = null;
-      this.selectedElement = this.survey.currentPage;
+      this.deleteElementFromCurrentPage(obj, objType);
     }
     this.setModified({
       type: "OBJECT_DELETED",
@@ -2851,45 +2866,28 @@ export class SurveyCreator implements ISurveyObjectEditorOptions {
       this.updateConditionsOnRemove(obj.getValueName());
     }
   }
-  private showSurveyEmbeding() {
-    var json = this.getSurveyJSON();
-    this.surveyEmbeding.json = json;
-    this.surveyEmbeding.surveyId = this.surveyId;
-    this.surveyEmbeding.surveyPostId = this.surveyPostId;
-    this.surveyEmbeding.generateValidJSON =
-      this.options && this.options.generateValidJSON;
-    this.surveyEmbeding.show();
-  }
-  private showSurveyTranslation() {
-    this.translation.survey = this.survey;
-  }
-  private showSurveyLogic() {
-    this.logic.update(this.survey, this);
-  }
-  private getSurveyJSON(): any {
-    if (
-      this.koIsShowDesigner() ||
-      this.koViewType() == "translation" ||
-      this.koViewType() == "logic"
-    )
-      return new Survey.JsonObject().toJsonObject(this.survey);
-    if (this.jsonEditor.isJsonCorrect)
-      return new Survey.JsonObject().toJsonObject(this.jsonEditor.survey);
-    return null;
-  }
-  private createAnnotations(text: string, errors: any[]): AceAjax.Annotation[] {
-    var annotations = new Array<AceAjax.Annotation>();
-    for (var i = 0; i < errors.length; i++) {
-      var error = errors[i];
-      var annotation: AceAjax.Annotation = {
-        row: error.position.start.row,
-        column: error.position.start.column,
-        text: error.text,
-        type: "error",
-      };
-      annotations.push(annotation);
+  private deleteElementFromCurrentPage(obj: Element, objType: ObjType): void {
+    const page = this.survey.currentPage;
+    let newSelectedElement = page;
+    if (objType == ObjType.Question && page.questions.length > 1) {
+      const objIndex = page.indexOf(obj);
+      newSelectedElement =
+        page.questions[objIndex + 1] || page.questions[objIndex - 1];
     }
-    return annotations;
+    this.survey.currentPage.removeElement(obj);
+    this.survey.selectedElement = null;
+    this.selectedElement = newSelectedElement;
+  }
+  public getSurveyJSON(): any {
+    if (this.koViewType() != "editor") {
+      return new Survey.JsonObject().toJsonObject(this.survey);
+    }
+    var surveyJsonText = this.text;
+    var textWorker = new SurveyTextWorker(surveyJsonText);
+    if (textWorker.isJsonCorrect) {
+      return new Survey.JsonObject().toJsonObject(textWorker.survey);
+    }
+    return null;
   }
   public getObjectDisplayName(obj: Survey.Base): string {
     var displayName = SurveyHelper.getObjectName(obj, this.showObjectTitles);
